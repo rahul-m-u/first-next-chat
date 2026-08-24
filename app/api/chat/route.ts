@@ -1,0 +1,105 @@
+import { prisma } from "@/lib/prisma";
+import { NextResponse, NextRequest } from "next/server";
+import { authOptions } from "@/lib/auth";
+import { getServerSession } from "next-auth";
+
+
+export async function GET(request: NextRequest) {
+    try {
+        const session = await getServerSession(authOptions);
+
+        if (!session?.user?.id) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    message: "Unauthorized",
+                },
+                {
+                    status: 401,
+                }
+            );
+        }
+
+        const chats = await prisma.chat.findMany({
+            orderBy: {
+                createdAt: "desc"
+            }
+        })
+
+        return NextResponse.json(
+            {
+                success: true,
+                data: chats
+            },
+            { status: 200 }
+        )
+    } catch (error) {
+        console.error("GET chats error:", error);
+
+        return NextResponse.json(
+            {
+                success: false,
+                message: "Failed to fetch chats",
+            },
+            { status: 500 }
+        );
+    }
+}
+
+
+export async function POST(request: NextRequest) {
+    try {
+        const session = await getServerSession(authOptions);
+
+        if (!session?.user?.id) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    message: "Unauthorized",
+                },
+                {
+                    status: 401,
+                }
+            );
+        }
+
+        const { message } = await request.json();
+
+        const chat = await prisma.chat.create({
+            data: {
+                title: message.substring(0, 50),
+                userId: session.user.id,
+                message: {
+                    create: [
+                        {
+                            content: message,
+                            isUser: true
+                        }
+                    ]
+                }
+            },
+            include: {
+                message: {
+                    orderBy: {
+                        createdAt: 'asc'
+                    }
+                }
+            }
+        });
+
+        return NextResponse.json({
+            success: true,
+            data: chat,
+            chatId: chat.id,
+            messages: chat.message
+        });
+
+    } catch (error) {
+        console.error('error creating chat : ', error)
+        return NextResponse.json(
+            { error: 'Failed to create chat' },
+            { status: 500 }
+        );
+    }
+}
+

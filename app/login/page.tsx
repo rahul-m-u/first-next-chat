@@ -49,7 +49,7 @@ export default function LoginPage() {
                 return;
             }
 
-            router.push("/");
+            router.push("/chat");
             router.refresh();
         } catch (error) {
             setError("Something went wrong.");
@@ -86,7 +86,7 @@ export default function LoginPage() {
                     <h2 className={styles.formTitle}>Login</h2>
                     <p className={styles.formSub}>Enter your details to access your chat workspace.</p>
 
-                    <form className={styles.form} onSubmit={handleSubmit}>
+                    <form aria-label="form" className={styles.form} onSubmit={handleSubmit}>
                         {error && (
                             <p className={styles.error}>{error}</p>
                         )}

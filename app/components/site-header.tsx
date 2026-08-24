@@ -48,7 +48,6 @@ export default function SiteHeader() {
                         <Link href="/">Home</Link>
                         {session ? (
                             <>
-                                <Link href="/chat">Chat</Link>
                                 <form action={async () => await signOut()} method="POST">
                                     <button type="submit">Logout</button>
                                 </form>
