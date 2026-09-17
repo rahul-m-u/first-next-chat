@@ -314,7 +314,7 @@ export default function AdminDashboardPage() {
                             <div>
                                 <h2 className={styles.cardTitle}>Recent User Registrations</h2>
                                 <span className={styles.cardSubtitle}>
-                                    Latest accounts joined on Quill Chat
+                                    Latest accounts joined on Rai Chat
                                 </span>
                             </div>
                             <Link href="/admin/users" className={`${styles.btn} ${styles.btnSecondary}`} style={{ padding: "5px 12px", fontSize: "0.78rem" }}>
