@@ -8,25 +8,29 @@ export async function POST(request: NextRequest) {
 
     if (!fullname || !email || !password || !confirmPassword) {
         return NextResponse.json({
-            "message": "Please fill in all fields."
+            success: false,
+            message: "Please fill in all fields."
         }, { status: 400 });
     }
 
     if (!/\S+@\S+\.\S+/.test(email)) {
         return NextResponse.json({
-            "message": "Please enter a valid email address."
+            success: false,
+            message: "Please enter a valid email address."
         }, { status: 400 });
     }
 
     if (password !== confirmPassword) {
         return NextResponse.json({
-            "message": "Passwords do not match!"
+            success: false,
+            message: "Passwords do not match!"
         }, { status: 400 });
     }
 
     if (confirmPassword.length < 4 || confirmPassword.length > 20) {
         return NextResponse.json({
-            "message": "Password must be between 4 and 20 characters."
+            success: false,
+            message: "Password must be between 4 and 20 characters."
         }, { status: 400 });
     }
 
@@ -42,16 +46,15 @@ export async function POST(request: NextRequest) {
             }
         });
         return NextResponse.json({
-            "message": "User created successfully",
-            "user": user
+            success: true,
+            message: "User created successfully",
+            user: user
         });
     } catch (error) {
-        console.log("==========================================");
-        console.log("Error creating user:", error);
-        console.log("==========================================");
         return NextResponse.json({
-            "message": "Error creating user",
-            "error": error
+            success: false,
+            message: "Error creating user",
+            error: error
         }, { status: 500 });
     }
 }

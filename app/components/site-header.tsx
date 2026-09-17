@@ -48,12 +48,15 @@ export default function SiteHeader() {
                         <Link href="/">Home</Link>
                         {session ? (
                             <>
+                                <Link href="/chat">Chat</Link>
+                                <Link href="/admin">Admin</Link>
                                 <form action={async () => await signOut()} method="POST">
                                     <button type="submit">Logout</button>
                                 </form>
                             </>
                         ) : (
                             <>
+                                <Link href="/admin">Admin</Link>
                                 <Link href="/login">Login</Link>
                                 <Link href="/signup">Sign Up</Link>
                             </>

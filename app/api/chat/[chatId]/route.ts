@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse, NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
+import { chatWithAI } from "@/lib/agent";
 
 
 export async function GET(
@@ -15,6 +16,7 @@ export async function GET(
             return NextResponse.json(
                 {
                     success: false,
+                    error: "Unauthorized",
                     message: "Unauthorized",
                 },
                 {
@@ -39,7 +41,11 @@ export async function GET(
         })
 
         if (!chat) {
-            return NextResponse.json({ error: "Chat Not Found" }, { status: 404 })
+            return NextResponse.json({
+                success: false,
+                error: "Chat Not Found",
+                message: "Chat Not Found"
+            }, { status: 404 })
         }
 
         return NextResponse.json({
@@ -52,6 +58,7 @@ export async function GET(
         return NextResponse.json(
             {
                 success: false,
+                error: error,
                 message: "Failed to fetch chats",
             },
             { status: 500 }
@@ -71,6 +78,7 @@ export async function PUT(
             return NextResponse.json(
                 {
                     success: false,
+                    error: "Unauthorized",
                     message: "Unauthorized",
                 },
                 {
@@ -83,7 +91,11 @@ export async function PUT(
         const { message } = await request.json();
 
         if (!message) {
-            return NextResponse.json({ error: "message is required" }, { status: 400 })
+            return NextResponse.json({
+                success: false,
+                error: "message is required",
+                message: "message is required"
+            }, { status: 400 })
         }
 
         const chat = await prisma.chat.update({
@@ -110,9 +122,42 @@ export async function PUT(
             }
         })
 
+        const responseMessage = await chatWithAI([
+            {
+                role: "user",
+                content: message
+            }
+        ]);
+
+        console.log("responseMessage", JSON.stringify(responseMessage))
+
+        const updatedChat = await prisma.chat.update({
+            where: {
+                id: chatId,
+                userId: session.user.id,
+            },
+            data: {
+                message: {
+                    create: [
+                        {
+                            content: responseMessage,
+                            isUser: false
+                        }
+                    ]
+                }
+            },
+            include: {
+                message: {
+                    orderBy: {
+                        createdAt: 'asc'
+                    }
+                }
+            }
+        })
+
         return NextResponse.json({
             success: true,
-            data: chat
+            data: updatedChat
         })
     } catch (error) {
         console.error("GET chats error:", error);
@@ -120,6 +165,7 @@ export async function PUT(
         return NextResponse.json(
             {
                 success: false,
+                error: error,
                 message: "Failed to fetch chats",
             },
             { status: 500 }
@@ -139,6 +185,7 @@ export async function PATCH(
             return NextResponse.json(
                 {
                     success: false,
+                    error: "Unauthorized",
                     message: "Unauthorized",
                 },
                 {
@@ -151,7 +198,13 @@ export async function PATCH(
         const { title } = await request.json();
 
         if (!title) {
-            return NextResponse.json({ error: "Title is required" }, { status: 400 })
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Title is required",
+                    message: "Title is required"
+                }, { status: 400 }
+            )
         }
 
         const chat = await prisma.chat.update({
@@ -174,6 +227,7 @@ export async function PATCH(
         return NextResponse.json(
             {
                 success: false,
+                error: error,
                 message: "Failed to fetch chats",
             },
             { status: 500 }
@@ -193,6 +247,7 @@ export async function DELETE(
             return NextResponse.json(
                 {
                     success: false,
+                    error: "Unauthorized",
                     message: "Unauthorized",
                 },
                 {
@@ -220,6 +275,7 @@ export async function DELETE(
         return NextResponse.json(
             {
                 success: false,
+                error: error,
                 message: "Failed to delete chat",
             },
             { status: 500 }

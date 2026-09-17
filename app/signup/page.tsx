@@ -19,7 +19,6 @@ const bodyFont = Space_Grotesk({
 });
 
 
-
 export default function SignupPage() {
     const [formData, setFormData] = useState({
         fullname: "",

@@ -15,6 +15,7 @@ export async function GET(
             return NextResponse.json(
                 {
                     success: false,
+                    error: "Unauthorized",
                     message: "Unauthorized",
                 },
                 {
@@ -39,7 +40,11 @@ export async function GET(
     catch (error) {
         console.error('Error fetching conversations:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch conversations' },
+            {
+                success: false,
+                error: error,
+                message: "Failed to fetch conversations",
+            },
             { status: 500 }
         );
     }

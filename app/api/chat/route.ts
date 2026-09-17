@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json(
                 {
                     success: false,
+                    error: "Unauthorized",
                     message: "Unauthorized",
                 },
                 {
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(
             {
                 success: false,
+                error: error,
                 message: "Failed to fetch chats",
             },
             { status: 500 }
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(
                 {
                     success: false,
+                    error: "Unauthorized",
                     message: "Unauthorized",
                 },
                 {
@@ -97,7 +100,11 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('error creating chat : ', error)
         return NextResponse.json(
-            { error: 'Failed to create chat' },
+            {
+                success: false,
+                error: error,
+                message: 'Failed to create chat'
+            },
             { status: 500 }
         );
     }
