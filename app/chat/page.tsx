@@ -639,7 +639,7 @@ export default function ChatPage() {
                                             )}
                                             <article className={styles.message} data-mine={isMe}>
                                                 <span className={styles.messageAuthor}>
-                                                    {isMe ? "You" : "Quill Assistant"}
+                                                    {isMe ? "You" : "Rai Assistant"}
                                                 </span>
                                                 <p className={styles.messageText}>{conversation.content}</p>
                                                 {time && <span className={styles.messageTime}>{time}</span>}

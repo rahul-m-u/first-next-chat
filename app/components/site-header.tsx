@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 
 type ThemeMode = "light" | "dark";
 
-const STORAGE_KEY = "quill-theme";
+const STORAGE_KEY = "rai-theme";
 
 export default function SiteHeader() {
     const [theme, setTheme] = useState<ThemeMode>("light");
@@ -39,8 +39,8 @@ export default function SiteHeader() {
         <header className="siteHeader">
             <div className="siteHeaderInner">
                 <Link href="/" className="siteBrand">
-                    <span className="siteBrandMark">Q</span>
-                    <span>Quill Chat</span>
+                    <span className="siteBrandMark">R</span>
+                    <span>Rai Chat</span>
                 </Link>
 
                 <div className="siteHeaderActions">
