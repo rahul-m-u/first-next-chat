@@ -66,36 +66,16 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { message } = await request.json();
-
         const chat = await prisma.chat.create({
             data: {
-                title: message.substring(0, 50),
-                userId: session.user.id,
-                message: {
-                    create: [
-                        {
-                            content: message,
-                            isUser: true
-                        }
-                    ]
-                }
-            },
-            include: {
-                message: {
-                    orderBy: {
-                        createdAt: 'asc'
-                    }
-                }
+                userId: session.user.id
             }
-        });
+        })
 
         return NextResponse.json({
             success: true,
-            data: chat,
-            chatId: chat.id,
-            messages: chat.message
-        });
+            data: chat
+        })
 
     } catch (error) {
         console.error('error creating chat : ', error)

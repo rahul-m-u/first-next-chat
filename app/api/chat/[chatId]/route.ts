@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { NextResponse, NextRequest } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { getServerSession } from "next-auth";
-import { chatWithAI } from "@/lib/agent";
+import { invokeRai } from "@/lib/agent";
 
 
 export async function GET(
@@ -26,40 +26,25 @@ export async function GET(
         }
 
         const { chatId } = await params;
-
-        const chat = await prisma.chat.findFirst({
-            where: {
-                id: chatId,
-                userId: session.user.id,
-            },
-            select: {
-                id: true,
-                title: true,
-                createdAt: true,
-                userId: true
+        const messages = await prisma.message.findMany({
+            where: { chatId: chatId },
+            orderBy: {
+                createdAt: 'asc'
             }
         })
 
-        if (!chat) {
-            return NextResponse.json({
-                success: false,
-                error: "Chat Not Found",
-                message: "Chat Not Found"
-            }, { status: 404 })
-        }
-
         return NextResponse.json({
             success: true,
-            data: chat
+            data: messages
         })
-    } catch (error) {
-        console.error("GET chats error:", error);
-
+    }
+    catch (error) {
+        console.error('Error fetching conversations:', error);
         return NextResponse.json(
             {
                 success: false,
                 error: error,
-                message: "Failed to fetch chats",
+                message: "Failed to fetch conversations",
             },
             { status: 500 }
         );
@@ -67,7 +52,7 @@ export async function GET(
 }
 
 
-export async function PUT(
+export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ chatId: string }> }
 ) {
@@ -90,83 +75,132 @@ export async function PUT(
         const { chatId } = await params;
         const { message } = await request.json();
 
-        if (!message) {
-            return NextResponse.json({
-                success: false,
-                error: "message is required",
-                message: "message is required"
-            }, { status: 400 })
+        let chat;
+
+        chat = await prisma.chat.findUnique({
+            where: {
+                id: chatId
+            }
+        })
+
+        if (!chat) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Chat not found",
+                    message: "Chat not found",
+                },
+                {
+                    status: 404,
+                }
+            );
         }
 
-        const chat = await prisma.chat.update({
-            where: {
-                id: chatId,
-                userId: session.user.id,
-            },
+        // Make sure the chat belongs to current user
+        if (chat.userId !== session.user.id) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: "Forbidden",
+                    message: "You don't have access to this chat",
+                },
+                { status: 403 }
+            );
+        }
+
+        // Set title for first message
+        if (!chat.title) {
+            chat = await prisma.chat.update({
+                where: {
+                    id: chatId,
+                },
+                data: {
+                    title: message.substring(0, 50),
+                },
+            });
+        }
+
+        // Save user message
+        await prisma.message.create({
             data: {
-                message: {
-                    create: [
-                        {
-                            content: message,
-                            isUser: true
-                        }
-                    ]
-                }
+                content: message,
+                isUser: true,
+                chatId: chat.id,
             },
-            include: {
-                message: {
-                    orderBy: {
-                        createdAt: 'asc'
+        });
+
+
+        const readableStream = await invokeRai(message)
+
+        const reader = readableStream.getReader();
+        const decoder = new TextDecoder();
+
+        let fullAIResponse = "";
+
+        const stream = new ReadableStream({
+            async start(controller) {
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+
+                        if (done) break;
+
+                        const chunk = decoder.decode(value, { stream: true });
+
+                        if (!chunk) continue;
+
+                        fullAIResponse += chunk;
+
+                        controller.enqueue(value)
+
                     }
-                }
-            }
-        })
 
-        const responseMessage = await chatWithAI([
-            {
-                role: "user",
-                content: message
-            }
-        ]);
+                    const remaining = decoder.decode();
 
-        console.log("responseMessage", JSON.stringify(responseMessage))
-
-        const updatedChat = await prisma.chat.update({
-            where: {
-                id: chatId,
-                userId: session.user.id,
-            },
-            data: {
-                message: {
-                    create: [
-                        {
-                            content: responseMessage,
-                            isUser: false
-                        }
-                    ]
-                }
-            },
-            include: {
-                message: {
-                    orderBy: {
-                        createdAt: 'asc'
+                    if (remaining) {
+                        fullAIResponse += remaining;
+                        controller.enqueue(new TextEncoder().encode(remaining));
                     }
+
+                    // Save complete AI response
+                    await prisma.message.create({
+                        data: {
+                            content: fullAIResponse,
+                            isUser: false,
+                            chatId: chat.id,
+                        },
+                    });
+
+                    console.log(
+                        "AI response saved:",
+                        fullAIResponse
+                    );
+
+                    controller.close();
+                } catch (error) {
+                    console.error("Error while streaming AI response : ", error);
+                    controller.error(error);
                 }
             }
         })
 
-        return NextResponse.json({
-            success: true,
-            data: updatedChat
+        return new Response(stream, {
+            headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+                "Transfer-Encoding": "chunked",
+            },
         })
+
     } catch (error) {
-        console.error("GET chats error:", error);
-
+        console.error('error creating chat : ', error)
         return NextResponse.json(
             {
                 success: false,
                 error: error,
-                message: "Failed to fetch chats",
+                message: 'Something went wrong!!'
             },
             { status: 500 }
         );

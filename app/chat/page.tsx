@@ -8,14 +8,14 @@ interface Chat {
     title: string | null;
     createdAt: string;
     userId?: string | null;
-    message?: Conversation[];
+    message?: Message[];
 }
 
-interface Conversation {
+interface Message {
     id: string;
     content: string;
     isUser: boolean;
-    chatId: string | null;
+    chatId?: string;
     createdAt: string;
 }
 
@@ -125,11 +125,10 @@ export default function ChatPage() {
     const [draft, setDraft] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [chats, setChats] = useState<Chat[]>([]);
-    const [conversations, setConversations] = useState<Conversation[]>([]);
+    const [message, setMessage] = useState<Message[]>([]);
     const [isLoadingChats, setIsLoadingChats] = useState(true);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
@@ -138,7 +137,7 @@ export default function ChatPage() {
 
     useEffect(() => {
         scrollToBottom();
-    }, [conversations, isSubmitting]);
+    }, [message, isSubmitting]);
 
     const getChats = async () => {
         try {
@@ -165,33 +164,40 @@ export default function ChatPage() {
 
     const getConversations = async (chatId: string) => {
         if (!chatId) {
-            setConversations([]);
+            setMessage([]);
             return;
         }
 
         try {
             setIsLoadingMessages(true);
-            const response = await fetch(`/api/chat/${chatId}/conversations`);
+            const response = await fetch(`/api/chat/${chatId}`);
             const result = await response.json();
             if (result.success && Array.isArray(result.data)) {
-                setConversations(result.data);
+                setMessage(result.data);
             } else {
-                setConversations([]);
+                setMessage([]);
             }
         } catch (error) {
             console.error("Failed to load conversations:", error);
-            setConversations([]);
+            setMessage([]);
         } finally {
             setIsLoadingMessages(false);
         }
     };
 
     useEffect(() => {
-        if (activeChatId) {
-            getConversations(activeChatId);
-        } else {
-            setConversations([]);
+        if (!activeChatId) {
+            setMessage([]);
+            return;
         }
+
+        // Don't reload messages while sending a message.
+        if (isSubmitting) {
+            return;
+        }
+
+        getConversations(activeChatId);
+
     }, [activeChatId]);
 
     const filteredChats = useMemo(() => {
@@ -202,7 +208,7 @@ export default function ChatPage() {
 
     const handleStartNewConversation = () => {
         setActiveChatId("");
-        setConversations([]);
+        setMessage([]);
         setDraft("");
     };
 
@@ -210,78 +216,150 @@ export default function ChatPage() {
         setDraft(promptText);
     };
 
+    const createNewChat = async (): Promise<string | null | undefined> => {
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}),
+            })
+
+            if (!response.ok) {
+                return null;
+            }
+
+            const result = await response.json();
+            if (result.success && result.data) {
+                const newChatId = result.data.id;
+                setChats((prev) => [result.data, ...prev]);
+                setActiveChatId(newChatId);
+
+                return newChatId;
+            }
+        } catch (error) {
+            console.error("Failed to create new chat:", error);
+            return null;
+        } finally {
+            setIsLoadingChats(false);
+        }
+    };
+
     const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        const text = draft.trim();
-        if (!text || isSubmitting) return;
+
+        const userQuery = draft.trim();
+
+        if (!userQuery || isSubmitting) return;
 
         setIsSubmitting(true);
 
-        // Case 1: Starting a NEW conversation
-        if (!activeChatId) {
-            try {
-                const response = await fetch("/api/chat", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: text }),
-                });
-
-                const result = await response.json();
-                if (result.success && result.data) {
-                    const newChat: Chat = result.data;
-                    setChats((prev) => [newChat, ...prev]);
-                    setActiveChatId(newChat.id);
-                    setConversations(newChat.message || [
-                        {
-                            id: `temp-${Date.now()}`,
-                            content: text,
-                            isUser: true,
-                            chatId: newChat.id,
-                            createdAt: new Date().toISOString(),
-                        },
-                    ]);
-                    setDraft("");
-                } else if (result.chatId) {
-                    await getChats();
-                    setActiveChatId(result.chatId);
-                    setDraft("");
-                }
-            } catch (error) {
-                console.error("Error creating new chat:", error);
-            } finally {
-                setIsSubmitting(false);
-            }
-            return;
-        }
-
-        // Case 2: Appending to an EXISTING conversation
-        const tempId = `temp-${Date.now()}`;
-        const optimisticMsg: Conversation = {
-            id: tempId,
-            content: text,
-            isUser: true,
-            chatId: activeChatId,
-            createdAt: new Date().toISOString(),
-        };
-
-        setConversations((prev) => [...prev, optimisticMsg]);
-        setDraft("");
-
         try {
-            const response = await fetch(`/api/chat/${activeChatId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: text }),
-            });
+            let chatId = activeChatId;
 
-            const result = await response.json();
-            if (result.success && result.data?.message) {
-                setConversations(result.data.message);
+            // Create a new chat only if we don't already have one
+            if (!chatId) {
+                const newChatId = await createNewChat();
+
+                if (!newChatId) {
+                    throw new Error("Failed to create chat");
+                }
+
+                chatId = newChatId;
             }
+
+            const tempId = `temp-${Date.now()}`;
+            const aiTempId = `temp-${Date.now() + 1}`;
+
+            setMessage((prev) => [
+                ...prev,
+                {
+                    id: tempId,
+                    content: userQuery,
+                    isUser: true,
+                    chatId: chatId,
+                    createdAt: new Date().toISOString(),
+                },
+                {
+                    id: aiTempId,
+                    content: "",
+                    isUser: false,
+                    chatId: chatId,
+                    createdAt: new Date().toISOString(),
+                },
+            ]);
+
+            setDraft("");
+
+            const response = await fetch(`/api/chat/${chatId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: userQuery }),
+            })
+
+            if (!response.ok) {
+                return new Error("Failed to start new conversation");
+            }
+
+            if (!response.body) {
+                return new Error("Failed to start new conversation");
+            }
+
+            const reader = response.body.getReader();
+            const decorder = new TextDecoder();
+
+            while (true) {
+                const { done, value } = await reader.read();
+
+                if (done) break;
+
+                const chunk = decorder.decode(value, { stream: true })
+
+                if (!chunk) continue;
+
+                setMessage((prev) =>
+                    prev.map((msg) =>
+                        msg.id === aiTempId
+                            ? {
+                                ...msg,
+                                content: msg.content + chunk,
+                            }
+                            : msg
+                    )
+                );
+            }
+
+            const remaining = decorder.decode();
+            if (remaining) {
+                setMessage((prev) =>
+                    prev.map((msg) =>
+                        msg.id === aiTempId
+                            ? {
+                                ...msg,
+                                content: msg.content + remaining,
+                            }
+                            : msg
+                    )
+                );
+            }
+
+            // Refresh chats so the title / updated timestamp is reflected
+            await getChats();
         } catch (error) {
-            console.error("Error sending message:", error);
-        } finally {
-            setIsSubmitting(false);
+            console.log("this is the error :", error)
+
+            setMessage((prev) =>
+                prev.map((msg) =>
+                    !msg.isUser && msg.content === ""
+                        ? {
+                            ...msg,
+                            content: "Error: Failed to get response from AI",
+                        }
+                        : msg
+                )
+            );
+        }
+        finally {
+            setIsSubmitting(false)
         }
     };
 
@@ -611,18 +689,18 @@ export default function ChatPage() {
                                     </div>
                                     <p style={{ marginTop: "10px" }}>Loading messages...</p>
                                 </div>
-                            ) : conversations.length === 0 ? (
+                            ) : message.length === 0 ? (
                                 <div className={styles.emptyThreadNotice}>
                                     <p>No messages in this chat yet. Send a message below to get started!</p>
                                 </div>
                             ) : (
-                                conversations.map((conversation) => {
-                                    const time = formatMessageTime(conversation.createdAt);
-                                    const isMe = conversation.isUser;
+                                message.map((msg, index) => {
+                                    const time = formatMessageTime(msg.createdAt);
+                                    const isMe = msg.isUser;
 
                                     return (
                                         <div
-                                            key={conversation.id}
+                                            key={index}
                                             className={styles.messageRow}
                                             data-mine={isMe}
                                         >
@@ -637,45 +715,43 @@ export default function ChatPage() {
                                                     AI
                                                 </span>
                                             )}
-                                            <article className={styles.message} data-mine={isMe}>
-                                                <span className={styles.messageAuthor}>
-                                                    {isMe ? "You" : "Rai Assistant"}
-                                                </span>
-                                                <p className={styles.messageText}>{conversation.content}</p>
-                                                {time && <span className={styles.messageTime}>{time}</span>}
-                                            </article>
-                                            {isMe && (
-                                                <span
-                                                    className={styles.messageAvatar}
-                                                    style={{
-                                                        background:
-                                                            "linear-gradient(135deg, #ff6b35, #ef476f)",
-                                                    }}
-                                                >
-                                                    You
-                                                </span>
-                                            )}
+
+                                            {!isMe && isSubmitting && index === message.length - 1 && !msg.content ? (
+                                                <div className={styles.typingIndicator}>
+                                                    <span className={styles.messageText}>Thinking</span>
+                                                    <span className={styles.dot}></span>
+                                                    <span className={styles.dot}></span>
+                                                    <span className={styles.dot}></span>
+                                                </div>
+                                            ) : <>
+                                                <article className={styles.message} data-mine={isMe}>
+
+                                                    <span className={styles.messageAuthor}>
+                                                        {isMe ? "You" : "Rai Assistant"}
+                                                    </span>
+
+                                                    {msg.content && <p className={styles.messageText}>{msg.content}</p>}
+
+                                                    {time && <span className={styles.messageTime}>{time}</span>}
+                                                </article>
+
+
+                                                {isMe && (
+                                                    <span
+                                                        className={styles.messageAvatar}
+                                                        style={{
+                                                            background:
+                                                                "linear-gradient(135deg, #ff6b35, #ef476f)",
+                                                        }}
+                                                    >
+                                                        You
+                                                    </span>
+                                                )}
+                                            </>}
+
                                         </div>
                                     );
                                 })
-                            )}
-
-                            {isSubmitting && (
-                                <div className={styles.messageRow} data-mine={false}>
-                                    <span
-                                        className={styles.messageAvatar}
-                                        style={{
-                                            background: "linear-gradient(135deg, #10b981, #06b6d4)",
-                                        }}
-                                    >
-                                        AI
-                                    </span>
-                                    <div className={styles.typingIndicator}>
-                                        <span className={styles.dot}></span>
-                                        <span className={styles.dot}></span>
-                                        <span className={styles.dot}></span>
-                                    </div>
-                                </div>
                             )}
 
                             <div ref={messagesEndRef} />
